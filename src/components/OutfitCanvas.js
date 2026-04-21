@@ -193,13 +193,24 @@ export default function OutfitCanvas({ items }) {
       // 2. Mannequin
       drawMannequin(ctx, SKIN_TONES[skinTone]);
 
-      // 3. Clothing — in draw order
+      // 3. Clothing — in draw order, with layering awareness
+      const hasOuterwear = !!loadedMap['outerwear'];
+      const hasDress     = !!loadedMap['dress'] || !!loadedMap['jumpsuit'];
+
       for (const cat of DRAW_ORDER) {
         const img  = loadedMap[cat];
         const zone = ZONES[cat];
-        if (img && zone) {
-          drawClippedItem(ctx, img, zone);
-        }
+        if (!img || !zone) continue;
+
+        // If outerwear is present and fully covers the top zone, 
+        // show the top underneath but dimmed (visible at collar/hem only via clipping)
+        // This is handled naturally by draw order — outerwear renders ON TOP of top
+        // So no special logic needed — just ensure we don't skip bottom when dress is present
+
+        // Skip bottom if a dress/jumpsuit is being worn (dress covers it)
+        if (cat === 'bottom' && hasDress) continue;
+
+        drawClippedItem(ctx, img, zone);
       }
 
       // 4. Vignette — gives a polished "studio shot" feel

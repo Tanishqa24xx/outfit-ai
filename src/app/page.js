@@ -23,6 +23,7 @@ export default function RecommendPage() {
   const [outfits,    setOutfits]    = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState(null);
+  const [mode, setMode] = useState('recommend');
 
   const loadWardrobe = useCallback(async () => {
     const all = await db.wardrobeItems.toArray();
@@ -73,6 +74,26 @@ export default function RecommendPage() {
     <main className="min-h-screen bg-neutral-950 text-white p-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-2">Outfit Recommender</h1>
       <p className="text-neutral-500 text-sm mb-8">{taggedCount} tagged items in wardrobe</p>
+
+      {/* Mode toggle */}
+      <div className="flex gap-1 bg-neutral-900 rounded-xl p-1 mb-6 w-fit">
+        <button
+          onClick={() => setMode('recommend')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            mode === 'recommend' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          My Wardrobe
+        </button>
+        <button
+          onClick={() => setMode('vibe')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            mode === 'vibe' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'
+          }`}
+        >
+          ✦ Vibe Match
+        </button>
+      </div>
 
       {/* Controls */}
       <div className="bg-neutral-900 rounded-2xl p-6 mb-8 space-y-5">
@@ -149,7 +170,7 @@ function OutfitCard({ outfit, index, wardrobe, occasion, weather, style }) {
   const [saving, setSaving] = useState(false);
 
   const usedItems = useMemo(
-    () => outfit.itemIds?.map(id => wardrobe.find(w => w.id === id)).filter(Boolean) || [],
+    () => outfit.itemIds?.map(id => wardrobe.find(w => Number(w.id) === Number(id))).filter(Boolean) || [],
     [outfit.itemIds, wardrobe]
   );
 

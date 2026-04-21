@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 
-// These constants live server-side only — never sent to the browser
 const STRICT_FORMAL = ['business-formal', 'formal-event', 'wedding-guest'];
 const SEMI_FORMAL   = ['business-casual', 'smart-casual', 'meeting', 'work'];
-
-// Hard-filter these keywords OUT before the AI ever sees the items
-// This is a security/quality layer — the AI can't override it
 const FORMAL_BANNED = ['ripped', 'distressed', 'yoga pant', 'sweatpant', 'hoodie', 'baseball cap'];
 const STRICT_BANNED = ['skinny jean', 'cargo short', 'zip-up hoodie'];
 
@@ -13,7 +9,6 @@ function filterWardrobe(items, occasion) {
   const isStrict = STRICT_FORMAL.includes(occasion);
   const isSemi   = SEMI_FORMAL.includes(occasion);
   if (!isStrict && !isSemi) return items;
-
   return items.filter(item => {
     const d = (item.description || '').toLowerCase();
     if (FORMAL_BANNED.some(k => d.includes(k))) return false;
@@ -22,10 +17,9 @@ function filterWardrobe(items, occasion) {
   });
 }
 
-// Style reference boards — the AI uses these as a creative anchor
 const BOARDS = {
-  'clean-girl':      'Clean girl aesthetic: slicked bun, neutral tones, fitted tee tucked into straight jeans, gold jewelry, tote bag, white sneakers or loafers. Effortless but intentional.',
-  'kpop-inspired':   'Kpop fashion: monochrome layers, cropped pieces with wide-leg pants, mixing textures, structured oversized jackets, platform shoes, chain accessories. Vary the idol inspiration each outfit.',
+  'clean-girl':      'Clean girl aesthetic: slicked bun, neutral tones, fitted tee tucked into straight jeans, gold jewelry, tote bag, white sneakers or loafers.',
+  'kpop-inspired':   'Kpop fashion: monochrome layers, cropped pieces with wide-leg pants, mixing textures, structured oversized jackets, platform shoes, chain accessories.',
   'boss-girl':       'Office siren / power dressing: blazer over fitted top, straight trousers, pointed flats or loafers, minimal gold jewelry, structured bag.',
   'elegant':         'Quiet luxury: neutral palette, well-fitted basics, timeless silhouettes, no logos, gold studs, leather tote.',
   'streetwear':      'Street style: wide-leg jeans, graphic or bold tops, layered jackets, chunky sneakers, crossbody bag.',
@@ -48,14 +42,15 @@ const SHOES = {
 export async function POST(request) {
   try {
     const { wardrobe: candidates, occasion, weather, style, extraNotes } = await request.json();
-    
-    // Random seed so the AI doesn't produce identical results each time
     const seed = Math.floor(Math.random() * 99999);
 
     const items = (candidates || []).map(i => ({
       id:          i.id,
       category:    i.category,
       colors:      i.colors,
+      fit:         i.geminiTags?.fit || i.fit || 'unknown',
+      weight:      i.geminiTags?.weight || i.weight || 'medium',
+      fabricType:  i.geminiTags?.fabricType || i.fabricType || 'unknown',
       description: i.geminiTags?.description || i.description || i.category,
     }));
 
@@ -64,26 +59,23 @@ export async function POST(request) {
     const shoeRule      = SHOES[occasion] || SHOES['default'];
     const board         = BOARDS[style]   || BOARDS['clean-girl'];
 
-    // Build the wardrobe list as a string — this was the broken template literal
-    // The fix: build it separately so there are no nested backticks
     const wardrobeList = filtered
-      .map(i => `[${i.id}] ${i.category} — ${i.description} (${(i.colors || []).join(', ')})`)
+      .map(i => `[${i.id}] ${i.category} | fit:${i.fit} | weight:${i.weight} | fabric:${i.fabricType} — ${i.description} (${(i.colors || []).join(', ')})`)
       .join('\n');
 
     const professionalRules = isForBusiness
       ? `PROFESSIONAL RULES:
-- business-formal: structured pieces only. No jeans, no sneakers. Min 2 layers.
+- business-formal: structured pieces only. No rippedjeans, no sneakers. Min 2 layers.
 - business-casual / smart-casual: dark wash straight or wide-leg jeans OK. No skinny jeans.
 - Shoes: ${shoeRule}`
       : `CASUAL RULES:
 - No blazers for college, travel, athleisure.
-- Shoes: ${shoeRule}
-- Suggest layering as optional.`;
+- Shoes: ${shoeRule}`;
 
     const prompt = `You are a creative personal stylist. Seed: ${seed}.
 
 PERSON:
-- Body: 5'2", rectangular + hourglass (broad shoulders, no defined waist). Create waist illusion: high-waisted bottoms, cropped tops, belts, tucking. V-necks balance shoulders. Monochrome elongates.
+- Body: 5'2", rectangular + apple (broad shoulders, no defined waist). Create waist illusion: high-waisted bottoms, cropped tops, belts, tucking. V-necks balance shoulders. Monochrome elongates.
 - Skin: warm honey-brown. Best colors: white, black, navy, red, brown, camel, rust, olive, burgundy, blush, cobalt.
 - Vibe: clean, elegant, confident. Not girly. Not grunge. Open to fitted and clingy styles.
 
@@ -94,19 +86,27 @@ ${extraNotes ? `NOTES: ${extraNotes}` : ''}
 
 ${professionalRules}
 
-LAYERING: Only layer pieces that work physically together. Specify tuck: full-tuck / front-tuck / side-tuck / knot-tie.
+⚠️ PHYSICAL LAYERING RULES — READ CAREFULLY:
+These are non-negotiable. Real clothes have physical constraints.
+1. A heavy item (weight:heavy) CANNOT go under a medium or light item. A coat doesn't go under a tee.
+2. Two tops cannot both be worn as a base layer. Only ONE item per category in an outfit.
+3. A fitted/slim item CAN go under a relaxed/oversized/structured item — this is fine.
+4. An oversized or heavy knit top CANNOT go under a structured woven top or blazer — it would be lumpy.
+5. outerwear = the outermost layer ONLY. It goes OVER the top, never under.
+6. If a top is weight:heavy or fit:oversized, do NOT add another top or outerwear unless that outerwear is clearly a structured jacket (fabricType:structured OR fabricType:woven).
+7. When in doubt, leave the outerwear out. A clean two-piece (top + bottom) is better than a forced three-piece.
 
-WARDROBE — ${filtered.length} items. Use ONLY these exact IDs:
+WARDROBE — ${filtered.length} items:
 ${wardrobeList}
 
-TASK: Create 3 outfits.
+TASK: Create 3 outfits. Each outfit must be something you could physically put on your body without any item conflicting with another.
 
 STRICT RULES:
 - Use ONLY item IDs from the wardrobe list above
 - itemIds must be real numbers from the list — do NOT invent IDs
 - Each outfit must contain 2 to 4 real IDs
 - Each outfit: different silhouette, different color story, different mood
-- Each styleInspo: reference a different idol or icon
+- For the "layer" field in accessories: only suggest a layer that PHYSICALLY works over the chosen top. If the top is heavy/oversized, write "none needed" or suggest an open unbuttoned jacket only.
 
 Respond ONLY with valid JSON array, no markdown:
 [
@@ -150,23 +150,24 @@ Respond ONLY with valid JSON array, no markdown:
     const clean  = text.replace(/```json|```/g, '').trim();
     const outfits = JSON.parse(clean);
 
-    // Server-side validation: strip any IDs the AI hallucinated
-    const validIdSet = new Set(filtered.map(i => i.id));
+    const validIdSet = new Set(filtered.map(i => Number(i.id)));
 
     const processed = outfits.map(outfit => {
       const seen     = new Set();
-      const validIds = (outfit.itemIds || []).filter(id => {
-        if (!validIdSet.has(id)) return false;            // hallucinated ID
-        const item = filtered.find(w => w.id === id);
-        if (!item || seen.has(item.category)) return false; // duplicate category
-        seen.add(item.category);
-        return true;
-      });
+      const validIds = (outfit.itemIds || [])
+        .map(id => Number(id))  // force number
+        .filter(id => {
+          if (!validIdSet.has(id)) return false;
+          const item = filtered.find(w => Number(w.id) === id);
+          if (!item || seen.has(item.category)) return false;
+          seen.add(item.category);
+          return true;
+        });
 
       return {
         ...outfit,
         itemIds:          validIds,
-        itemDescriptions: validIds.map(id => filtered.find(w => w.id === id)?.description || ''),
+        itemDescriptions: validIds.map(id => filtered.find(w => Number(w.id) === id)?.description || ''),
       };
     });
 

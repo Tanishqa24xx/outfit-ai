@@ -6,8 +6,7 @@ const links = [
   { href: '/',           label: 'Recommend'  },
   { href: '/wardrobe',   label: 'Wardrobe'   },
   { href: '/shopping',   label: 'Shopping'   },
-  { href: '/boards',     label: 'Style Boards' },
-  { href: '/trends',     label: 'Trends'     },
+  { href: '/boards',     label: 'Style Boards' }
 ];
 
 export default function Nav() {
