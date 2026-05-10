@@ -1,3 +1,5 @@
+// outfit-ai\src\lib\profile.js
+
 export const USER_PROFILE = {
   body: {
     height: "5'2\"",

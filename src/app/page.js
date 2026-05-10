@@ -1,3 +1,5 @@
+// outfit-ai\src\app\page.js
+
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '@/lib/db';
@@ -9,7 +11,7 @@ const OCCASIONS = [
   'travel', 'beach', 'wedding-guest', 'formal-event',
 ];
 const WEATHER = ['hot', 'warm', 'mild', 'cool', 'cold', 'rainy', 'humid'];
-const STYLES  = [
+const STYLES = [
   'clean-girl', 'kpop-inspired', 'elegant', 'boss-girl',
   'streetwear', 'athleisure', 'business-formal', 'business-casual', 'smart-casual',
 ];
@@ -23,7 +25,6 @@ export default function RecommendPage() {
   const [outfits,    setOutfits]    = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState(null);
-  const [mode, setMode] = useState('recommend');
 
   const loadWardrobe = useCallback(async () => {
     const all = await db.wardrobeItems.toArray();
@@ -39,7 +40,7 @@ export default function RecommendPage() {
 
   async function handleRecommend() {
     if (taggedCount === 0) {
-      setError('No tagged items in wardrobe. Please upload and tag some clothes first.');
+      setError('No tagged items. Upload clothes in the Wardrobe tab first.');
       return;
     }
     setLoading(true);
@@ -47,7 +48,6 @@ export default function RecommendPage() {
     setOutfits([]);
 
     try {
-      // Strip image blobs — they can't be JSON-serialised
       const wardrobeData = wardrobe
         .filter(i => i.status === 'tagged')
         .map(({ id, category, colors, styles, occasions, geminiTags }) => ({
@@ -72,44 +72,22 @@ export default function RecommendPage() {
 
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">Outfit Recommender</h1>
+      <h1 className="text-2xl font-bold mb-2">What to wear</h1>
       <p className="text-neutral-500 text-sm mb-8">{taggedCount} tagged items in wardrobe</p>
 
-      {/* Mode toggle */}
-      <div className="flex gap-1 bg-neutral-900 rounded-xl p-1 mb-6 w-fit">
-        <button
-          onClick={() => setMode('recommend')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            mode === 'recommend' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'
-          }`}
-        >
-          My Wardrobe
-        </button>
-        <button
-          onClick={() => setMode('vibe')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            mode === 'vibe' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'
-          }`}
-        >
-          ✦ Vibe Match
-        </button>
-      </div>
-
-      {/* Controls */}
       <div className="bg-neutral-900 rounded-2xl p-6 mb-8 space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { label: 'Occasion', value: occasion, set: setOccasion, opts: OCCASIONS },
-            { label: 'Weather',  value: weather,  set: setWeather,  opts: WEATHER  },
-            { label: 'Style vibe', value: style,  set: setStyle,    opts: STYLES   },
+            { label: 'Occasion',   value: occasion, set: setOccasion, opts: OCCASIONS },
+            { label: 'Weather',    value: weather,  set: setWeather,  opts: WEATHER  },
+            { label: 'Style vibe', value: style,    set: setStyle,    opts: STYLES   },
           ].map(({ label, value, set, opts }) => (
             <div key={label}>
               <label className="text-xs text-neutral-400 block mb-1">{label}</label>
               <select
                 value={value}
                 onChange={e => set(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg
-                           px-3 py-2 text-sm text-white"
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white"
               >
                 {opts.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
@@ -119,14 +97,13 @@ export default function RecommendPage() {
 
         <div>
           <label className="text-xs text-neutral-400 block mb-1">
-            Extra notes <span className="text-neutral-600">(optional)</span>
+            Notes <span className="text-neutral-600">(optional)</span>
           </label>
           <input
             value={extraNotes}
             onChange={e => setExtraNotes(e.target.value)}
-            placeholder="e.g. I want to look taller, avoiding heels today, important interview..."
-            className="w-full bg-neutral-800 border border-neutral-700 rounded-lg
-                       px-3 py-2 text-sm text-white placeholder-neutral-600"
+            placeholder="e.g. avoiding heels today, important interview..."
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600"
           />
         </div>
 
@@ -142,10 +119,9 @@ export default function RecommendPage() {
         {error && <p className="text-red-400 text-sm">{error}</p>}
       </div>
 
-      {/* Results */}
       {outfits.length > 0 && (
         <div className="space-y-6">
-          <h2 className="text-lg font-semibold">Your outfits for today</h2>
+          <h2 className="text-base font-semibold text-neutral-300">Your outfits for today</h2>
           {outfits.map((outfit, i) => (
             <OutfitCard
               key={i}
@@ -153,7 +129,6 @@ export default function RecommendPage() {
               index={i}
               wardrobe={wardrobe}
               occasion={occasion}
-              weather={weather}
               style={style}
             />
           ))}
@@ -163,36 +138,31 @@ export default function RecommendPage() {
   );
 }
 
-// ─── OutfitCard ────────────────────────────────────────────────────────────────
-
-function OutfitCard({ outfit, index, wardrobe, occasion, weather, style }) {
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
+function OutfitCard({ outfit, index, wardrobe, occasion, style }) {
+  const [expanded, setExpanded] = useState(false);
+  const [saved,    setSaved]    = useState(false);
+  const [saving,   setSaving]   = useState(false);
 
   const usedItems = useMemo(
-    () => outfit.itemIds?.map(id => wardrobe.find(w => Number(w.id) === Number(id))).filter(Boolean) || [],
+    () => (outfit.itemIds || [])
+      .map(id => wardrobe.find(w => Number(w.id) === Number(id)))
+      .filter(Boolean),
     [outfit.itemIds, wardrobe]
   );
 
-  // This is the fix: persist to IndexedDB instead of just toggling local state
   async function handleSave() {
     if (saved || saving) return;
     setSaving(true);
     try {
       await db.savedOutfits.add({
-        // Identity
         outfitName:       outfit.outfitName,
         occasion,
-        weather,
         style,
         dateCreated:      new Date(),
-        // What clothes are in it — IDs let us look up blobs on the Boards page
         itemIds:          outfit.itemIds,
         itemDescriptions: outfit.itemDescriptions,
-        // Styling narrative
         styling:          outfit.styling,
         whyItWorks:       outfit.whyItWorks,
-        silhouette:       outfit.silhouette,
         accessories:      outfit.accessories,
         styleInspo:       outfit.styleInspo,
       });
@@ -206,19 +176,18 @@ function OutfitCard({ outfit, index, wardrobe, occasion, weather, style }) {
 
   return (
     <div className="bg-neutral-900 rounded-2xl p-6">
-      {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>
           <span className="text-xs text-neutral-500">Outfit {index + 1}</span>
           <h3 className="text-lg font-semibold">{outfit.outfitName}</h3>
           {outfit.styleInspo && (
-            <p className="text-xs text-neutral-400 mt-0.5 italic">{outfit.styleInspo}</p>
+            <p className="text-xs text-neutral-400 mt-0.5 italic">✦ {outfit.styleInspo}</p>
           )}
         </div>
         <button
           onClick={handleSave}
           disabled={saved || saving}
-          className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
+          className={`text-sm px-3 py-1.5 rounded-full border transition-colors shrink-0 ${
             saved
               ? 'bg-white text-black border-white'
               : 'border-neutral-600 text-neutral-400 hover:border-neutral-400'
@@ -228,48 +197,40 @@ function OutfitCard({ outfit, index, wardrobe, occasion, weather, style }) {
         </button>
       </div>
 
-      {/* Clothing thumbnails */}
       {usedItems.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
           {usedItems.map(item => <WardrobeThumb key={item.id} item={item} />)}
         </div>
       )}
 
-      {/* Pieces */}
-      <div className="mb-4">
-        <p className="text-xs text-neutral-500 uppercase tracking-wide mb-2">The pieces</p>
-        <ul className="space-y-1">
-          {outfit.itemDescriptions?.map((desc, i) => (
-            <li key={i} className="text-sm text-neutral-300">• {desc}</li>
-          ))}
-        </ul>
-      </div>
-
-      {/* How to style */}
       <div className="mb-4 bg-neutral-800 rounded-xl p-4">
-        <p className="text-xs text-neutral-500 uppercase tracking-wide mb-1">How to style it</p>
+        <p className="text-xs text-neutral-500 uppercase tracking-wide mb-1">How to wear it</p>
         <p className="text-sm text-neutral-200">{outfit.styling}</p>
       </div>
 
-      {/* Why it works */}
-      <div className="mb-4">
-        <p className="text-xs text-neutral-500 uppercase tracking-wide mb-1">Why it works for you</p>
-        <p className="text-sm text-neutral-400">{outfit.whyItWorks}</p>
-      </div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors"
+      >
+        {expanded ? '▲ Less' : '▼ Why it works + accessories'}
+      </button>
 
-      {/* Accessories */}
-      {outfit.accessories && (
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          <p className="text-xs text-neutral-500 uppercase tracking-wide col-span-2 mb-1">
-            Complete the look
-          </p>
-          {Object.entries(outfit.accessories).map(([key, value]) =>
-            value ? (
-              <div key={key} className="bg-neutral-800 rounded-lg p-3">
-                <p className="text-xs text-neutral-500 capitalize">{key}</p>
-                <p className="text-sm text-neutral-200">{value}</p>
-              </div>
-            ) : null
+      {expanded && (
+        <div className="mt-3 space-y-4 border-t border-neutral-800 pt-4">
+          {outfit.whyItWorks && (
+            <p className="text-sm text-neutral-400">{outfit.whyItWorks}</p>
+          )}
+          {outfit.accessories && (
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(outfit.accessories).map(([key, value]) =>
+                value && value !== 'none needed' ? (
+                  <div key={key} className="bg-neutral-800 rounded-lg p-3">
+                    <p className="text-xs text-neutral-500 capitalize">{key}</p>
+                    <p className="text-sm text-neutral-200">{value}</p>
+                  </div>
+                ) : null
+              )}
+            </div>
           )}
         </div>
       )}
@@ -277,13 +238,9 @@ function OutfitCard({ outfit, index, wardrobe, occasion, weather, style }) {
   );
 }
 
-// ─── WardrobeThumb ─────────────────────────────────────────────────────────────
-
 function WardrobeThumb({ item }) {
   const url = useMemo(() => URL.createObjectURL(item.imageBlob), [item.imageBlob]);
-
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
-
   return (
     <div className="w-20 h-20 rounded-lg overflow-hidden border border-neutral-700">
       <img src={url} className="w-full h-full object-cover" alt={item.category} />

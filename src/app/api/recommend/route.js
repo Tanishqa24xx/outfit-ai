@@ -1,129 +1,199 @@
+// src/app/api/recommend/route.js
+
 import { NextResponse } from 'next/server';
 
 const STRICT_FORMAL = ['business-formal', 'formal-event', 'wedding-guest'];
 const SEMI_FORMAL   = ['business-casual', 'smart-casual', 'meeting', 'work'];
-const FORMAL_BANNED = ['ripped', 'distressed', 'yoga pant', 'sweatpant', 'hoodie', 'baseball cap'];
-const STRICT_BANNED = ['skinny jean', 'cargo short', 'zip-up hoodie'];
 
-function filterWardrobe(items, occasion) {
-  const isStrict = STRICT_FORMAL.includes(occasion);
-  const isSemi   = SEMI_FORMAL.includes(occasion);
-  if (!isStrict && !isSemi) return items;
+// Banned everywhere except athleisure — checked at data layer, AI never sees these items
+const ALWAYS_BANNED_NON_ATHLEISURE = ['yoga', 'legging', 'athletic tight', 'gym tight', 'yoga pant'];
+
+// Skinny jeans banned for ALL professional/semi-professional occasions at data layer
+// Prompt rules alone are insufficient — model ignores them
+const SKINNY_BANNED_KEYWORDS = ['skinny', 'jegging'];
+const SKINNY_BANNED_OCCASIONS = [
+  'business-formal', 'business-casual', 'smart-casual', 'work', 'meeting',
+  'formal-event', 'wedding-guest',
+];
+
+const OCCASION_BANNED = {
+  strict: ['ripped', 'distressed', 'sweatpant', 'hoodie', 'baseball cap',
+           'cargo', 'jogger', 'track pant', 'sneaker', 'trainer', 'yoga', 'legging'],
+  semi:   ['cargo', 'jogger', 'track pant', 'ripped', 'distressed', 'hoodie', 'yoga', 'legging'],
+};
+
+const SHOE_RULES = {
+  'business-formal': 'loafers, block heels, or pointed flats — NO sneakers',
+  'business-casual': 'loafers, ankle boots, or block heels — NO sneakers',
+  'smart-casual':    'loafers, ankle boots, or clean white sneakers only',
+  'college':         'sneakers, loafers, or boots',
+  'travel':          'sneakers or loafers — no heels',
+  'athleisure':      'sneakers or trainers only',
+  'default':         'shoes suitable for the occasion',
+};
+
+const STYLE_BOARDS = {
+  'clean-girl':      'Minimal, effortless. Neutral tones, fitted tee tucked into straight or wide-leg jeans, gold jewelry, white sneakers or loafers.',
+  'kpop-inspired':   'Monochrome layers, cropped pieces with wide-leg pants, oversized structured jackets, platform shoes.',
+  'boss-girl':       'Power dressing: blazer over fitted top, straight or wide-leg trousers, pointed flats, structured bag.',
+  'elegant':         'Quiet luxury: neutral palette, well-fitted basics, timeless silhouettes, no logos.',
+  'streetwear':      'Wide-leg jeans, graphic tops, layered jackets, chunky sneakers.',
+  'athleisure':      'Fitted athletic pieces, oversized hoodie or jacket, sleek sneakers.',
+  'business-formal': 'Tailored blazer, wide-leg trousers or midi skirt, fitted blouse, pointed flats.',
+  'business-casual': 'Blazer over tee, dark straight or wide-leg jeans/trousers, loafers or ankle boots.',
+  'smart-casual':    'Dark straight or wide-leg jeans with blouse, knit over collared shirt, clean sneakers or loafers.',
+};
+
+function validateLayering(itemIds, allItems) {
+  const items = itemIds
+    .map(id => allItems.find(w => Number(w.id) === Number(id)))
+    .filter(Boolean);
+
+  const byCategory = {};
+  for (const item of items) {
+    if (byCategory[item.category]) return false;
+    byCategory[item.category] = item;
+  }
+
+  const top       = byCategory['top'];
+  const outerwear = byCategory['outerwear'];
+  const dress     = byCategory['dress'];
+  const bottom    = byCategory['bottom'];
+
+  if (dress && (top || bottom)) return false;
+
+  if (outerwear && top) {
+    const topFit      = top.geminiTags?.fit        || top.fit        || 'unknown';
+    const topWeight   = top.geminiTags?.weight     || top.weight     || 'medium';
+    const topFabric   = top.geminiTags?.fabricType || top.fabricType || 'unknown';
+    const outerWeight = outerwear.geminiTags?.weight || outerwear.weight || 'medium';
+
+    if (topWeight === 'heavy') return false;
+    if (topFabric === 'knit' && (topFit === 'oversized' || topFit === 'relaxed')) return false;
+    const w = { light: 1, medium: 2, heavy: 3 };
+    if ((w[outerWeight] || 2) < (w[topWeight] || 2)) return false;
+  }
+
+  return true;
+}
+
+function filterByOccasion(items, occasion) {
+  const isStrict     = STRICT_FORMAL.includes(occasion);
+  const isSemi       = SEMI_FORMAL.includes(occasion);
+  const isAthleisure = occasion === 'athleisure';
+  const banSkinny    = SKINNY_BANNED_OCCASIONS.includes(occasion);
+
   return items.filter(item => {
-    const d = (item.description || '').toLowerCase();
-    if (FORMAL_BANNED.some(k => d.includes(k))) return false;
-    if (isStrict && STRICT_BANNED.some(k => d.includes(k))) return false;
+    const d = (item.geminiTags?.description || item.description || '').toLowerCase();
+    const f = (item.geminiTags?.fit || item.fit || '').toLowerCase();
+
+    // Yoga/leggings banned everywhere except athleisure
+    if (!isAthleisure && ALWAYS_BANNED_NON_ATHLEISURE.some(k => d.includes(k))) return false;
+
+    // Skinny jeans banned for all professional occasions — description AND fit check
+    if (banSkinny && (
+      SKINNY_BANNED_KEYWORDS.some(k => d.includes(k)) ||
+      (item.category === 'bottom' && f === 'fitted' && (d.includes('jean') || d.includes('denim')))
+    )) return false;
+
+    if (isStrict) return !OCCASION_BANNED.strict.some(k => d.includes(k));
+    if (isSemi)   return !OCCASION_BANNED.semi.some(k => d.includes(k));
     return true;
   });
 }
 
-const BOARDS = {
-  'clean-girl':      'Clean girl aesthetic: slicked bun, neutral tones, fitted tee tucked into straight jeans, gold jewelry, tote bag, white sneakers or loafers.',
-  'kpop-inspired':   'Kpop fashion: monochrome layers, cropped pieces with wide-leg pants, mixing textures, structured oversized jackets, platform shoes, chain accessories.',
-  'boss-girl':       'Office siren / power dressing: blazer over fitted top, straight trousers, pointed flats or loafers, minimal gold jewelry, structured bag.',
-  'elegant':         'Quiet luxury: neutral palette, well-fitted basics, timeless silhouettes, no logos, gold studs, leather tote.',
-  'streetwear':      'Street style: wide-leg jeans, graphic or bold tops, layered jackets, chunky sneakers, crossbody bag.',
-  'athleisure':      'Gym to street: fitted athletic pieces, oversized hoodie or jacket over, sleek sneakers, mini bag.',
-  'business-formal': 'Power dressing: tailored blazer, wide-leg trousers or midi skirt, fitted blouse, pointed flats or heels, structured handbag.',
-  'business-casual': 'Smart professional: blazer over tee, dark jeans or trousers, loafers or ankle boots, tote bag.',
-  'smart-casual':    'Elevated everyday: dark jeans with blouse, knit over collared shirt, clean sneakers or loafers.',
-};
-
-const SHOES = {
-  'business-formal': 'loafers, block heels, or pointed flats only',
-  'business-casual': 'loafers, ankle boots, or block heels',
-  'smart-casual':    'loafers, ankle boots, or minimal clean white sneakers',
-  'college':         'sneakers, loafers, or boots — no heels',
-  'travel':          'sneakers or loafers — no heels',
-  'athleisure':      'sneakers or trainers only',
-  'default':         'shoes appropriate for the occasion',
-};
-
 export async function POST(request) {
   try {
-    const { wardrobe: candidates, occasion, weather, style, extraNotes } = await request.json();
-    const seed = Math.floor(Math.random() * 99999);
+    const { wardrobe: raw, occasion, weather, style, extraNotes } = await request.json();
 
-    const items = (candidates || []).map(i => ({
-      id:          i.id,
-      category:    i.category,
-      colors:      i.colors,
-      fit:         i.geminiTags?.fit || i.fit || 'unknown',
-      weight:      i.geminiTags?.weight || i.weight || 'medium',
-      fabricType:  i.geminiTags?.fabricType || i.fabricType || 'unknown',
+    const allItems = (raw || []).map(i => ({
+      ...i,
+      id:          Number(i.id),
+      fit:         i.geminiTags?.fit         || i.fit         || 'unknown',
+      weight:      i.geminiTags?.weight      || i.weight      || 'medium',
+      fabricType:  i.geminiTags?.fabricType  || i.fabricType  || 'unknown',
       description: i.geminiTags?.description || i.description || i.category,
     }));
 
-    const filtered      = filterWardrobe(items, occasion);
+    const filtered      = filterByOccasion(allItems, occasion);
     const isForBusiness = STRICT_FORMAL.includes(occasion) || SEMI_FORMAL.includes(occasion);
-    const shoeRule      = SHOES[occasion] || SHOES['default'];
-    const board         = BOARDS[style]   || BOARDS['clean-girl'];
+    const shoeRule      = SHOE_RULES[occasion]  || SHOE_RULES['default'];
+    const board         = STYLE_BOARDS[style]   || STYLE_BOARDS['clean-girl'];
+    const seed          = Math.floor(Math.random() * 99999);
+
+    const hasDress   = filtered.some(i => i.category === 'dress');
+    const hasBottoms = filtered.some(i => i.category === 'bottom');
+
+    // Detect if non-skinny bottoms exist — deprioritise skinny if so
+    const hasNonSkinnyBottoms = filtered.some(i => {
+      if (i.category !== 'bottom') return false;
+      const d = (i.geminiTags?.description || i.description || '').toLowerCase();
+      const f = i.geminiTags?.fit || i.fit || '';
+      return d.includes('wide') || d.includes('straight') || d.includes('trouser') ||
+             d.includes('flare') || f === 'straight' || f === 'relaxed';
+    });
+
+    const bottomRule = (!hasDress && hasBottoms)
+      ? 'REQUIRED: every outfit MUST include a bottom item.'
+      : '';
+
+    const skinnyRule = hasNonSkinnyBottoms
+      ? 'JEANS RULE: ALWAYS prefer wide-leg or straight-cut bottoms first. Use skinny jeans ONLY as a last resort when no other bottom works with the chosen top. Never default to skinny.'
+      : '';
 
     const wardrobeList = filtered
       .map(i => `[${i.id}] ${i.category} | fit:${i.fit} | weight:${i.weight} | fabric:${i.fabricType} — ${i.description} (${(i.colors || []).join(', ')})`)
       .join('\n');
 
-    const professionalRules = isForBusiness
-      ? `PROFESSIONAL RULES:
-- business-formal: structured pieces only. No rippedjeans, no sneakers. Min 2 layers.
-- business-casual / smart-casual: dark wash straight or wide-leg jeans OK. No skinny jeans.
-- Shoes: ${shoeRule}`
-      : `CASUAL RULES:
-- No blazers for college, travel, athleisure.
-- Shoes: ${shoeRule}`;
+    const prompt = `You are a personal stylist. Seed:${seed}
 
-    const prompt = `You are a creative personal stylist. Seed: ${seed}.
-
-PERSON:
-- Body: 5'2", rectangular + apple (broad shoulders, no defined waist). Create waist illusion: high-waisted bottoms, cropped tops, belts, tucking. V-necks balance shoulders. Monochrome elongates.
+BODY — apply every rule below to every outfit:
+- Rectangle shape: NO natural waist. MUST create waist illusion in every outfit.
+  Waist techniques (pick one per outfit, state it explicitly in styling):
+  · High-waisted bottom + cropped or tucked top
+  · Full-tuck or front-tuck into high-waisted bottoms
+  · Monochrome head-to-toe for a lean elongated line
+  · Belted or wrap-style piece
+- Broad shoulders: prefer V-neck, scoop neck, or deep necklines. Avoid boat neck, off-shoulder.
+- Hip dips: high-waisted bottoms always. If bottom is tight/fitted, pair with a longer top that grazes the hip.
+- Height 5'2": avoid overwhelming volume — cropped proportions work well. No midi skirts with chunky tops.
 - Skin: warm honey-brown. Best colors: white, black, navy, red, brown, camel, rust, olive, burgundy, blush, cobalt.
-- Vibe: clean, elegant, confident. Not girly. Not grunge. Open to fitted and clingy styles.
 
-STYLE BOARD (${style}): ${board}
-
+STYLE: ${style} — ${board}
 OCCASION: ${occasion} | WEATHER: ${weather}
 ${extraNotes ? `NOTES: ${extraNotes}` : ''}
 
-${professionalRules}
+${isForBusiness ? `PROFESSIONAL: structured pieces only. ${shoeRule}` : `SHOES: ${shoeRule}`}
+${bottomRule}
+${skinnyRule}
 
-⚠️ PHYSICAL LAYERING RULES — READ CAREFULLY:
-These are non-negotiable. Real clothes have physical constraints.
-1. A heavy item (weight:heavy) CANNOT go under a medium or light item. A coat doesn't go under a tee.
-2. Two tops cannot both be worn as a base layer. Only ONE item per category in an outfit.
-3. A fitted/slim item CAN go under a relaxed/oversized/structured item — this is fine.
-4. An oversized or heavy knit top CANNOT go under a structured woven top or blazer — it would be lumpy.
-5. outerwear = the outermost layer ONLY. It goes OVER the top, never under.
-6. If a top is weight:heavy or fit:oversized, do NOT add another top or outerwear unless that outerwear is clearly a structured jacket (fabricType:structured OR fabricType:woven).
-7. When in doubt, leave the outerwear out. A clean two-piece (top + bottom) is better than a forced three-piece.
+PHYSICAL LAYERING — NON-NEGOTIABLE:
+- ONE item per category maximum
+- fit:oversized OR weight:heavy OR fabric:knit top → NO outerwear
+- fit:fitted/slim + weight:light/medium top → structured outerwear OK (fabric:structured or fabric:woven only)
+- Never dress + top or dress + bottom
+- When in doubt: 2-piece outfit beats forced layering
 
-WARDROBE — ${filtered.length} items:
+WARDROBE — use ONLY these exact IDs, do not invent:
 ${wardrobeList}
 
-TASK: Create 3 outfits. Each outfit must be something you could physically put on your body without any item conflicting with another.
+Create 3 outfits. Each must have a DIFFERENT silhouette. Each must explicitly state which waist technique is used.
 
-STRICT RULES:
-- Use ONLY item IDs from the wardrobe list above
-- itemIds must be real numbers from the list — do NOT invent IDs
-- Each outfit must contain 2 to 4 real IDs
-- Each outfit: different silhouette, different color story, different mood
-- For the "layer" field in accessories: only suggest a layer that PHYSICALLY works over the chosen top. If the top is heavy/oversized, write "none needed" or suggest an open unbuttoned jacket only.
-
-Respond ONLY with valid JSON array, no markdown:
+JSON array only, no markdown:
 [
   {
     "outfitName": "name",
-    "silhouette": "silhouette and why it suits her",
     "itemIds": [1, 2],
-    "itemDescriptions": ["desc 1", "desc 2"],
-    "styling": "layer by layer — what goes first, tuck type, how to wear each piece",
-    "whyItWorks": "body shape, coloring, occasion",
+    "itemDescriptions": ["desc1", "desc2"],
+    "styling": "layer by layer — waist technique used, tuck style, proportions",
+    "whyItWorks": "body shape rationale + coloring + occasion fit",
     "accessories": {
-      "shoes": "specific — must follow shoe rule above",
+      "shoes": "specific",
       "bag": "specific",
       "jewelry": "specific",
-      "layer": "specific outer layer or none needed"
+      "layer": "specific outerwear OR none needed"
     },
-    "styleInspo": "specific idol/icon and exactly why this outfit matches their aesthetic"
+    "styleInspo": "specific person/aesthetic and why"
   }
 ]`;
 
@@ -137,7 +207,7 @@ Respond ONLY with valid JSON array, no markdown:
         model:       'meta-llama/llama-4-scout-17b-16e-instruct',
         messages:    [{ role: 'user', content: prompt }],
         max_tokens:  2000,
-        temperature: 0.95,
+        temperature: 0.7,
       }),
     });
 
@@ -146,32 +216,55 @@ Respond ONLY with valid JSON array, no markdown:
       return NextResponse.json({ success: false, error: data.error?.message }, { status: 500 });
     }
 
-    const text   = data.choices[0].message.content.trim();
-    const clean  = text.replace(/```json|```/g, '').trim();
+    const text    = data.choices[0].message.content.trim();
+    const clean   = text.replace(/```json|```/g, '').trim();
     const outfits = JSON.parse(clean);
 
-    const validIdSet = new Set(filtered.map(i => Number(i.id)));
+    const validIdSet = new Set(filtered.map(i => i.id));
 
-    const processed = outfits.map(outfit => {
+    const processed = outfits
+      .map(outfit => {
+        const seen     = new Set();
+        const validIds = (outfit.itemIds || [])
+          .map(id => Number(id))
+          .filter(id => {
+            if (!validIdSet.has(id)) return false;
+            const item = filtered.find(w => w.id === id);
+            if (!item || seen.has(item.category)) return false;
+            seen.add(item.category);
+            return true;
+          });
+
+        if (!validateLayering(validIds, filtered)) return null;
+
+        return {
+          ...outfit,
+          itemIds:          validIds,
+          itemDescriptions: validIds.map(id => filtered.find(w => w.id === id)?.description || ''),
+        };
+      })
+      .filter(Boolean);
+
+    // Fallback: strip outerwear and return if all failed validation
+    const final = processed.length > 0 ? processed : outfits.map(outfit => {
       const seen     = new Set();
       const validIds = (outfit.itemIds || [])
-        .map(id => Number(id))  // force number
+        .map(id => Number(id))
         .filter(id => {
           if (!validIdSet.has(id)) return false;
-          const item = filtered.find(w => Number(w.id) === id);
-          if (!item || seen.has(item.category)) return false;
+          const item = filtered.find(w => w.id === id);
+          if (!item || seen.has(item.category) || item.category === 'outerwear') return false;
           seen.add(item.category);
           return true;
         });
-
       return {
         ...outfit,
         itemIds:          validIds,
-        itemDescriptions: validIds.map(id => filtered.find(w => Number(w.id) === id)?.description || ''),
+        itemDescriptions: validIds.map(id => filtered.find(w => w.id === id)?.description || ''),
       };
     });
 
-    return NextResponse.json({ success: true, outfits: processed });
+    return NextResponse.json({ success: true, outfits: final });
 
   } catch (error) {
     console.error('Recommend error:', error.message);

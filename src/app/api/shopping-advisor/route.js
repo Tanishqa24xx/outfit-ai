@@ -1,3 +1,4 @@
+// outfit-ai\src\app\api\shopping-advisor\route.js
 
 import { NextResponse } from 'next/server';
 import { USER_PROFILE } from '@/lib/profile';
@@ -35,7 +36,7 @@ Respond with ONLY a JSON object. No markdown.
       "category": "category",
       "outfitCount": 8,
       "whyBuy": "why this is a high-value purchase for her wardrobe specifically",
-      "worksWith": ["works with item A + item B for X occasion", "works with item C for Y occasion"],
+      "worksWith": ["blazer + trousers → work", "white tee + jeans → casual", "midi skirt + heels → formal"]
       "specific": "exact specification — color, fit, style details (e.g. 'high-waisted wide-leg black trousers, straight cut, not cropped')",
       "occasions": ["business-formal", "smart-casual"]
     }

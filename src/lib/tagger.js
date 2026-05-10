@@ -1,3 +1,5 @@
+// outfit-ai\src\lib\tagger.js
+
 import { db } from './db';
 
 export async function tagItem(itemId) {

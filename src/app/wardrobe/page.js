@@ -1,49 +1,40 @@
+// src/app/wardrobe/page.js
 'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { db } from '@/lib/db';
 import { tagItem, tagAllPending } from '@/lib/tagger';
 
-const CATEGORIES = ['top','bottom','outerwear','dress','shoes','bag','accessory'];
+const CATEGORIES  = ['top','bottom','outerwear','dress','shoes','bag','accessory'];
+const FIT_OPTIONS = ['fitted','slim','straight','relaxed','oversized','cropped'];
+const WEIGHT_OPTIONS   = ['light','medium','heavy'];
+const FABRIC_OPTIONS   = ['knit','woven','denim','jersey','structured','flowy','athletic'];
 
 const COLORS = [
-  // Whites & neutrals
   'white','ivory','off-white','cream','beige','tan','camel',
-  // Greys & blacks
   'black','charcoal','dark-grey','grey','light-grey',
-  // Blues — expanded
-  'navy','dark-navy','cobalt','royal-blue','medium-blue',
-  'light-blue','sky-blue','baby-blue','powder-blue',
+  'navy','cobalt','royal-blue','medium-blue','light-blue','sky-blue','baby-blue',
   'light-wash-denim','medium-wash-denim','dark-wash-denim',
-  // Greens
   'forest-green','olive','sage','mint','emerald',
-  // Reds & pinks
   'red','burgundy','wine','rust','terracotta',
   'hot-pink','blush','light-pink','dusty-rose','mauve',
-  // Browns
   'rich-brown','chocolate','caramel','warm-tan',
-  // Others
-  'purple','lilac','lavender','yellow','mustard',
-  'orange','gold','silver','multicolor','print','white-print','black-print'
-];
-
-const STYLES = [
-  'casual','smart-casual','business-casual','business-formal','streetwear',
-  'athleisure','evening','cocktail','resort','minimalist','maximalist',
-  'preppy','edgy','classic','clean-girl','kpop-inspired','elegant','boss-girl'
+  'purple','lilac','lavender','yellow','mustard','orange',
+  'gold','silver','multicolor','print',
 ];
 
 const OCCASIONS = [
   'everyday','work','meeting','date-night','going-out','brunch',
-  'travel','beach','wedding-guest','formal-event','college','party'
+  'travel','beach','wedding-guest','formal-event','college','party',
+  'business-formal','business-casual','smart-casual','athleisure',
 ];
 
 export default function WardrobePage() {
-  const [items, setItems]       = useState([]);
+  const [items,     setItems]     = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview]   = useState(null);
-  const [meta, setMeta]         = useState({ category: 'top' });
-  const fileRef = useRef();
+  const [preview,   setPreview]   = useState(null);
+  const [meta,      setMeta]      = useState({ category: 'top' });
   const [selectedFile, setSelectedFile] = useState(null);
+  const fileRef = useRef();
 
   const loadItems = useCallback(async () => {
     const all = await db.wardrobeItems.toArray();
@@ -57,46 +48,33 @@ export default function WardrobePage() {
 
   async function hashImage(arrayBuffer) {
     const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-    const hashArray  = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
   }
 
-  async function handleFile(e) {
+  function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-    setSelectedFile(file);                          // store the file
+    setSelectedFile(file);
     setPreview(URL.createObjectURL(file));
-    setUploading(false);
   }
 
   async function handleSave() {
     if (!selectedFile) return;
     setUploading(true);
-
     const arrayBuffer = await selectedFile.arrayBuffer();
-    const hash        = await hashImage(arrayBuffer);
-    const blob        = new Blob([arrayBuffer], { type: selectedFile.type });
-
+    const hash  = await hashImage(arrayBuffer);
+    const blob  = new Blob([arrayBuffer], { type: selectedFile.type });
     const newId = await db.wardrobeItems.add({
-      imageBlob:  blob,
-      imageHash:  hash,
-      category:   meta.category,
-      colors:     [],
-      styles:     [],
-      occasions:  [],
-      geminiTags: null,
-      status:     'untagged',
-      dateAdded:  new Date(),
+      imageBlob: blob, imageHash: hash,
+      category: meta.category,
+      colors: [], styles: [], occasions: [],
+      geminiTags: null, status: 'untagged', dateAdded: new Date(),
     });
-
-   
     setPreview(null);
     setSelectedFile(null);
     setUploading(false);
     fileRef.current.value = '';
     loadItems();
-
-    // Fire and forget — runs in background
     tagItem(newId).then(() => loadItems());
   }
 
@@ -105,22 +83,21 @@ export default function WardrobePage() {
     loadItems();
   }
 
+  async function handleRetag(id) {
+    await db.wardrobeItems.update(id, { status: 'untagged' });
+    loadItems();
+    await tagItem(id);
+    loadItems();
+  }
+
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-6">
       <h1 className="text-2xl font-bold mb-6">Wardrobe</h1>
 
-      {/* Upload area */}
+      {/* Upload */}
       <div className="bg-neutral-900 rounded-xl p-6 mb-8">
         <p className="text-sm text-neutral-400 mb-4">Add item</p>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFile}
-          className="hidden"
-        />
-
+        <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
         <div
           onClick={() => fileRef.current.click()}
           className="border-2 border-dashed border-neutral-700 rounded-lg p-8
@@ -131,35 +108,33 @@ export default function WardrobePage() {
             : <p className="text-neutral-500">Click to upload a photo</p>
           }
         </div>
-
         {preview && (
           <div className="flex gap-3 mt-4 items-center">
             <select
               value={meta.category}
               onChange={e => setMeta({ ...meta, category: e.target.value })}
-              className="bg-neutral-900 border border-neutral-700 rounded-lg
-                         px-3 py-2 text-sm text-white"
+              className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white"
             >
-              {CATEGORIES.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <button 
-              onClick={handleSave} 
-              className="bg-white text-black px-4 py-2 rounded-lg text-sm font-medium" > 
-              {uploading ? 'Saving...' : 'Save to wardrobe'} 
+            <button
+              onClick={handleSave}
+              className="bg-white text-black px-4 py-2 rounded-lg text-sm font-medium"
+            >
+              {uploading ? 'Saving...' : 'Save to wardrobe'}
             </button>
           </div>
         )}
       </div>
 
-      {/* Wardrobe grid */}
+      {/* Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {items.map(item => (
           <WardrobeCard
             key={item.id}
             item={item}
             onDelete={handleDelete}
+            onRetag={handleRetag}
             onEdit={loadItems}
           />
         ))}
@@ -168,13 +143,11 @@ export default function WardrobePage() {
   );
 }
 
-function WardrobeCard({ item, onDelete, onEdit }) {
-  const url = useMemo(() => URL.createObjectURL(item.imageBlob), [item.imageBlob]);
+function WardrobeCard({ item, onDelete, onRetag, onEdit }) {
+  const url     = useMemo(() => URL.createObjectURL(item.imageBlob), [item.imageBlob]);
   const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
 
   const statusColor = {
     untagged: 'text-yellow-500',
@@ -183,29 +156,39 @@ function WardrobeCard({ item, onDelete, onEdit }) {
     error:    'text-red-400',
   }[item.status] || 'text-neutral-500';
 
+  // Surface the three critical tags so user knows what the AI decided
+  const fit    = item.geminiTags?.fit        || '—';
+  const weight = item.geminiTags?.weight     || '—';
+  const fabric = item.geminiTags?.fabricType || '—';
+
   return (
     <>
-      <div className="bg-neutral-900 rounded-xl overflow-hidden cursor-pointer"
-           onClick={() => setEditing(true)}>
+      <div
+        className="bg-neutral-900 rounded-xl overflow-hidden cursor-pointer"
+        onClick={() => setEditing(true)}
+      >
         <img src={url} className="w-full aspect-square object-cover" alt={item.category} />
-        <div className="p-2">
+        <div className="p-2 space-y-1">
           <div className="flex justify-between items-center">
             <span className="text-xs text-neutral-400 capitalize">{item.category}</span>
             <button
               onClick={e => { e.stopPropagation(); onDelete(item.id); }}
               className="text-xs text-red-400 hover:text-red-300"
-            >
-              Remove
-            </button>
+            >Remove</button>
           </div>
           <span className={`text-xs ${statusColor} capitalize`}>{item.status}</span>
-          {item.geminiTags?.description && (
-            <p className="text-xs text-neutral-500 mt-1 line-clamp-2">
-              {item.geminiTags.description}
-            </p>
+
+          {/* Show critical tags — these control filtering */}
+          {item.status === 'tagged' && (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              <span className="bg-neutral-800 text-neutral-400 text-xs px-1.5 py-0.5 rounded">{fit}</span>
+              <span className="bg-neutral-800 text-neutral-400 text-xs px-1.5 py-0.5 rounded">{weight}</span>
+              <span className="bg-neutral-800 text-neutral-400 text-xs px-1.5 py-0.5 rounded">{fabric}</span>
+            </div>
           )}
-          {item.colors?.length > 0 && (
-            <p className="text-xs text-neutral-600 mt-1">{item.colors.join(', ')}</p>
+
+          {item.geminiTags?.description && (
+            <p className="text-xs text-neutral-500 mt-1 line-clamp-2">{item.geminiTags.description}</p>
           )}
         </div>
       </div>
@@ -214,6 +197,7 @@ function WardrobeCard({ item, onDelete, onEdit }) {
         <EditModal
           item={item}
           onSave={onEdit}
+          onRetag={() => { onRetag(item.id); setEditing(false); }}
           onClose={() => setEditing(false)}
         />
       )}
@@ -221,24 +205,31 @@ function WardrobeCard({ item, onDelete, onEdit }) {
   );
 }
 
-function EditModal({ item, onSave, onClose }) {
-  const [category, setCategory]     = useState(item.category);
-  const [colors, setColors]         = useState(item.colors || []);
-  const [styles, setStyles]         = useState(item.styles || []);
-  const [occasions, setOccasions]   = useState(item.occasions || []);
+function EditModal({ item, onSave, onRetag, onClose }) {
+  const [category,    setCategory]    = useState(item.category);
   const [description, setDescription] = useState(item.geminiTags?.description || '');
+  const [fit,         setFit]         = useState(item.geminiTags?.fit         || 'fitted');
+  const [weight,      setWeight]      = useState(item.geminiTags?.weight      || 'medium');
+  const [fabricType,  setFabricType]  = useState(item.geminiTags?.fabricType  || 'woven');
+  const [colors,      setColors]      = useState(item.colors    || []);
+  const [occasions,   setOccasions]   = useState(item.occasions || []);
 
-  function toggle(arr, setArr, value) {
-    setArr(arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]);
+  function toggle(arr, setArr, v) {
+    setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
   }
 
   async function handleSave() {
     await db.wardrobeItems.update(item.id, {
       category,
       colors,
-      styles,
       occasions,
-      geminiTags: { ...item.geminiTags, description },
+      geminiTags: {
+        ...item.geminiTags,
+        description,
+        fit,
+        weight,
+        fabricType,
+      },
       status: 'tagged',
     });
     onSave();
@@ -268,6 +259,73 @@ function EditModal({ item, onSave, onClose }) {
           className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white mb-4"
         />
 
+        {/* ── Critical tags ── shown prominently with explanation */}
+        <div className="bg-neutral-800 rounded-xl p-4 mb-4 space-y-4">
+          <p className="text-xs text-neutral-400 font-medium uppercase tracking-wide">
+            Styling tags — these control outfit filtering
+          </p>
+
+          {/* Fit */}
+          <div>
+            <label className="text-xs text-neutral-400 block mb-1.5">
+              Fit <span className="text-neutral-600">— how it sits on the body</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {FIT_OPTIONS.map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFit(f)}
+                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                    fit === f ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Weight */}
+          <div>
+            <label className="text-xs text-neutral-400 block mb-1.5">
+              Weight <span className="text-neutral-600">— light (tee/silk) · medium (denim/knit) · heavy (coat/wool)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {WEIGHT_OPTIONS.map(w => (
+                <button
+                  key={w}
+                  onClick={() => setWeight(w)}
+                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                    weight === w ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
+                  }`}
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fabric */}
+          <div>
+            <label className="text-xs text-neutral-400 block mb-1.5">
+              Fabric <span className="text-neutral-600">— knit (sweater) · woven (button-down) · structured (blazer)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {FABRIC_OPTIONS.map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFabricType(f)}
+                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                    fabricType === f ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Colors */}
         <label className="text-xs text-neutral-400 block mb-2">Colors</label>
         <div className="flex flex-wrap gap-2 mb-4">
@@ -276,30 +334,10 @@ function EditModal({ item, onSave, onClose }) {
               key={c}
               onClick={() => toggle(colors, setColors, c)}
               className={`px-2 py-1 rounded-full text-xs border transition-colors ${
-                colors.includes(c)
-                  ? 'bg-white text-black border-white'
-                  : 'border-neutral-600 text-neutral-400'
+                colors.includes(c) ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
               }`}
             >
               {c}
-            </button>
-          ))}
-        </div>
-
-        {/* Styles */}
-        <label className="text-xs text-neutral-400 block mb-2">Styles</label>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {STYLES.map(s => (
-            <button
-              key={s}
-              onClick={() => toggle(styles, setStyles, s)}
-              className={`px-2 py-1 rounded-full text-xs border transition-colors ${
-                styles.includes(s)
-                  ? 'bg-white text-black border-white'
-                  : 'border-neutral-600 text-neutral-400'
-              }`}
-            >
-              {s}
             </button>
           ))}
         </div>
@@ -312,9 +350,7 @@ function EditModal({ item, onSave, onClose }) {
               key={o}
               onClick={() => toggle(occasions, setOccasions, o)}
               className={`px-2 py-1 rounded-full text-xs border transition-colors ${
-                occasions.includes(o)
-                  ? 'bg-white text-black border-white'
-                  : 'border-neutral-600 text-neutral-400'
+                occasions.includes(o) ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
               }`}
             >
               {o}
@@ -324,8 +360,14 @@ function EditModal({ item, onSave, onClose }) {
 
         <div className="flex gap-3">
           <button
+            onClick={onRetag}
+            className="flex-1 border border-neutral-600 text-neutral-400 py-2 rounded-lg text-sm hover:border-neutral-400 transition-colors"
+          >
+            ↺ Re-tag with AI
+          </button>
+          <button
             onClick={onClose}
-            className="flex-1 border border-neutral-600 text-neutral-400 py-2 rounded-lg text-sm"
+            className="px-4 border border-neutral-700 text-neutral-500 py-2 rounded-lg text-sm"
           >
             Cancel
           </button>
@@ -333,7 +375,7 @@ function EditModal({ item, onSave, onClose }) {
             onClick={handleSave}
             className="flex-1 bg-white text-black py-2 rounded-lg text-sm font-medium"
           >
-            Save changes
+            Save
           </button>
         </div>
       </div>

@@ -1,3 +1,5 @@
+// outfit-ai\src\app\layout.js
+
 import { Geist } from 'next/font/google';
 import './globals.css';
 import Nav from '@/components/Nav';

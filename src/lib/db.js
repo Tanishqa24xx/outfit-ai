@@ -1,3 +1,5 @@
+// outfit-ai\src\lib\db.js
+
 import Dexie from 'dexie';
 
 export const db = new Dexie('OutfitAI');

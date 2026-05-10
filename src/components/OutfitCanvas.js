@@ -1,3 +1,5 @@
+// outfit-ai\src\components\OutfitCanvas.js
+
 'use client';
 import { useEffect, useRef, useState } from 'react';
 
