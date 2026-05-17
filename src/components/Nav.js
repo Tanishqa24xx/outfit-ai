@@ -1,5 +1,3 @@
-// outfit-ai\src\components\Nav.js
-
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -9,6 +7,7 @@ const links = [
   { href: '/wardrobe', label: 'Wardrobe' },
   { href: '/saved',   label: 'Saved' },
   { href: '/shopping', label: 'Shopping' },
+  { href: '/purchase', label: 'Buy?' },
 ];
 
 export default function Nav() {

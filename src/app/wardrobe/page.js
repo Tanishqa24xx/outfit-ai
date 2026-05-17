@@ -5,9 +5,19 @@ import { db } from '@/lib/db';
 import { tagItem, tagAllPending } from '@/lib/tagger';
 
 const CATEGORIES  = ['top','bottom','outerwear','dress','shoes','bag','accessory'];
-const FIT_OPTIONS = ['fitted','slim','straight','relaxed','oversized','cropped'];
-const WEIGHT_OPTIONS   = ['light','medium','heavy'];
-const FABRIC_OPTIONS   = ['knit','woven','denim','jersey','structured','flowy','athletic'];
+
+// Multi-select — a cropped fitted top gets both 'fitted' and 'cropped'
+const FIT_OPTIONS = [
+  'fitted','slim','straight','relaxed','oversized','cropped',
+  'wide-leg','flared','high-waisted','low-rise','boxy','longline',
+];
+const WEIGHT_OPTIONS = ['light','medium','heavy'];
+const FABRIC_OPTIONS = [
+  'cotton','linen','silk','satin','chiffon',          // naturals / light
+  'knit','jersey','ribbed','velvet',                   // stretch / texture
+  'woven','denim','twill','corduroy',                  // structured wovens
+  'structured','flowy','athletic','mesh','leather','faux-leather',
+];
 
 const COLORS = [
   'white','ivory','off-white','cream','beige','tan','camel',
@@ -157,9 +167,11 @@ function WardrobeCard({ item, onDelete, onRetag, onEdit }) {
   }[item.status] || 'text-neutral-500';
 
   // Surface the three critical tags so user knows what the AI decided
-  const fit    = item.geminiTags?.fit        || '—';
-  const weight = item.geminiTags?.weight     || '—';
-  const fabric = item.geminiTags?.fabricType || '—';
+  const fitRaw    = item.geminiTags?.fit        || '—';
+  const fit       = Array.isArray(fitRaw) ? fitRaw.join('+') : fitRaw;
+  const weight    = item.geminiTags?.weight     || '—';
+  const fabricRaw = item.geminiTags?.fabricType || '—';
+  const fabric    = Array.isArray(fabricRaw) ? fabricRaw.join('+') : fabricRaw;
 
   return (
     <>
@@ -208,9 +220,15 @@ function WardrobeCard({ item, onDelete, onRetag, onEdit }) {
 function EditModal({ item, onSave, onRetag, onClose }) {
   const [category,    setCategory]    = useState(item.category);
   const [description, setDescription] = useState(item.geminiTags?.description || '');
-  const [fit,         setFit]         = useState(item.geminiTags?.fit         || 'fitted');
+  const [fit,         setFit]         = useState(
+    Array.isArray(item.geminiTags?.fit) ? item.geminiTags.fit
+    : item.geminiTags?.fit ? [item.geminiTags.fit] : ['fitted']
+  );
   const [weight,      setWeight]      = useState(item.geminiTags?.weight      || 'medium');
-  const [fabricType,  setFabricType]  = useState(item.geminiTags?.fabricType  || 'woven');
+  const [fabricType,  setFabricType]  = useState(
+    Array.isArray(item.geminiTags?.fabricType) ? item.geminiTags.fabricType
+    : item.geminiTags?.fabricType ? [item.geminiTags.fabricType] : ['woven']
+  );
   const [colors,      setColors]      = useState(item.colors    || []);
   const [occasions,   setOccasions]   = useState(item.occasions || []);
 
@@ -226,7 +244,7 @@ function EditModal({ item, onSave, onRetag, onClose }) {
       geminiTags: {
         ...item.geminiTags,
         description,
-        fit,
+        fit,        // stored as array e.g. ['fitted','cropped']
         weight,
         fabricType,
       },
@@ -268,15 +286,15 @@ function EditModal({ item, onSave, onRetag, onClose }) {
           {/* Fit */}
           <div>
             <label className="text-xs text-neutral-400 block mb-1.5">
-              Fit <span className="text-neutral-600">— how it sits on the body</span>
+              Fit <span className="text-neutral-600">— pick all that apply (e.g. fitted + cropped)</span>
             </label>
             <div className="flex flex-wrap gap-2">
               {FIT_OPTIONS.map(f => (
                 <button
                   key={f}
-                  onClick={() => setFit(f)}
+                  onClick={() => toggle(fit, setFit, f)}
                   className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                    fit === f ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
+                    fit.includes(f) ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
                   }`}
                 >
                   {f}
@@ -308,15 +326,15 @@ function EditModal({ item, onSave, onRetag, onClose }) {
           {/* Fabric */}
           <div>
             <label className="text-xs text-neutral-400 block mb-1.5">
-              Fabric <span className="text-neutral-600">— knit (sweater) · woven (button-down) · structured (blazer)</span>
+              Fabric <span className="text-neutral-600">— pick all that apply (e.g. cotton + woven)</span>
             </label>
             <div className="flex flex-wrap gap-2">
               {FABRIC_OPTIONS.map(f => (
                 <button
                   key={f}
-                  onClick={() => setFabricType(f)}
+                  onClick={() => toggle(fabricType, setFabricType, f)}
                   className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                    fabricType === f ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
+                    fabricType.includes(f) ? 'bg-white text-black border-white' : 'border-neutral-600 text-neutral-400'
                   }`}
                 >
                   {f}

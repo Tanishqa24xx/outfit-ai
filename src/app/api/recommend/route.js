@@ -63,13 +63,13 @@ function validateLayering(itemIds, allItems) {
   if (dress && (top || bottom)) return false;
 
   if (outerwear && top) {
-    const topFit      = top.geminiTags?.fit        || top.fit        || 'unknown';
-    const topWeight   = top.geminiTags?.weight     || top.weight     || 'medium';
-    const topFabric   = top.geminiTags?.fabricType || top.fabricType || 'unknown';
+    const topFitArr   = Array.isArray(top.fit) ? top.fit : [top.fit || 'unknown'];
+    const topFabArr   = Array.isArray(top.fabricType) ? top.fabricType : [top.fabricType || 'unknown'];
+    const topWeight   = top.geminiTags?.weight || top.weight || 'medium';
     const outerWeight = outerwear.geminiTags?.weight || outerwear.weight || 'medium';
 
     if (topWeight === 'heavy') return false;
-    if (topFabric === 'knit' && (topFit === 'oversized' || topFit === 'relaxed')) return false;
+    if (topFabArr.includes('knit') && (topFitArr.includes('oversized') || topFitArr.includes('relaxed'))) return false;
     const w = { light: 1, medium: 2, heavy: 3 };
     if ((w[outerWeight] || 2) < (w[topWeight] || 2)) return false;
   }
@@ -91,9 +91,10 @@ function filterByOccasion(items, occasion) {
     if (!isAthleisure && ALWAYS_BANNED_NON_ATHLEISURE.some(k => d.includes(k))) return false;
 
     // Skinny jeans banned for all professional occasions — description AND fit check
+    const fitArr = toArrLocal(item.geminiTags?.fit || item.fit);
     if (banSkinny && (
       SKINNY_BANNED_KEYWORDS.some(k => d.includes(k)) ||
-      (item.category === 'bottom' && f === 'fitted' && (d.includes('jean') || d.includes('denim')))
+      (item.category === 'bottom' && fitArr.includes('fitted') && !fitArr.some(f => ['wide-leg','straight','flared','relaxed'].includes(f)) && (d.includes('jean') || d.includes('denim')))
     )) return false;
 
     if (isStrict) return !OCCASION_BANNED.strict.some(k => d.includes(k));
@@ -106,13 +107,16 @@ export async function POST(request) {
   try {
     const { wardrobe: raw, occasion, weather, style, extraNotes } = await request.json();
 
+    // Normalise fit/fabricType — DB may store string (old) or array (new)
+    const toArr = v => Array.isArray(v) ? v : (v ? [v] : []);
+
     const allItems = (raw || []).map(i => ({
       ...i,
       id:          Number(i.id),
-      fit:         i.geminiTags?.fit         || i.fit         || 'unknown',
-      weight:      i.geminiTags?.weight      || i.weight      || 'medium',
-      fabricType:  i.geminiTags?.fabricType  || i.fabricType  || 'unknown',
-      description: i.geminiTags?.description || i.description || i.category,
+      fit:         toArr(i.geminiTags?.fit    || i.fit),
+      weight:      i.geminiTags?.weight       || i.weight      || 'medium',
+      fabricType:  toArr(i.geminiTags?.fabricType || i.fabricType),
+      description: i.geminiTags?.description  || i.description || i.category,
     }));
 
     const filtered      = filterByOccasion(allItems, occasion);
@@ -127,10 +131,10 @@ export async function POST(request) {
     // Detect if non-skinny bottoms exist — deprioritise skinny if so
     const hasNonSkinnyBottoms = filtered.some(i => {
       if (i.category !== 'bottom') return false;
-      const d = (i.geminiTags?.description || i.description || '').toLowerCase();
-      const f = i.geminiTags?.fit || i.fit || '';
-      return d.includes('wide') || d.includes('straight') || d.includes('trouser') ||
-             d.includes('flare') || f === 'straight' || f === 'relaxed';
+      const d   = (i.geminiTags?.description || i.description || '').toLowerCase();
+      const fits = Array.isArray(i.fit) ? i.fit : [i.fit || ''];
+      return d.includes('wide') || d.includes('straight') || d.includes('trouser') || d.includes('flare') ||
+             fits.some(f => ['wide-leg','straight','relaxed','flared'].includes(f));
     });
 
     const bottomRule = (!hasDress && hasBottoms)
@@ -142,7 +146,11 @@ export async function POST(request) {
       : '';
 
     const wardrobeList = filtered
-      .map(i => `[${i.id}] ${i.category} | fit:${i.fit} | weight:${i.weight} | fabric:${i.fabricType} — ${i.description} (${(i.colors || []).join(', ')})`)
+      .map(i => {
+        const fit    = i.fit.length        ? i.fit.join('+')        : 'unknown';
+        const fabric = i.fabricType.length ? i.fabricType.join('+') : 'unknown';
+        return `[${i.id}] ${i.category} | fit:${fit} | weight:${i.weight} | fabric:${fabric} — ${i.description} (${(i.colors || []).join(', ')})`;
+      })
       .join('\n');
 
     const prompt = `You are a personal stylist. Seed:${seed}
