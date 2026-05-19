@@ -61,31 +61,27 @@ export default function WardrobePage() {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
   }
 
-  function handleFile(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setSelectedFile(file);
-    setPreview(URL.createObjectURL(file));
+  async function handleFiles(files) {
+    for (const file of files) {
+      const arrayBuffer = await file.arrayBuffer();
+      const hash = await hashImage(arrayBuffer);
+      const blob = new Blob([arrayBuffer], { type: file.type });
+      const newId = await db.wardrobeItems.add({
+        imageBlob: blob, imageHash: hash,
+        category: meta.category,
+        colors: [], styles: [], occasions: [],
+        geminiTags: null, status: 'untagged', dateAdded: new Date(),
+      });
+      loadItems();
+      tagItem(newId).then(() => loadItems());
+    }
   }
 
-  async function handleSave() {
-    if (!selectedFile) return;
-    setUploading(true);
-    const arrayBuffer = await selectedFile.arrayBuffer();
-    const hash  = await hashImage(arrayBuffer);
-    const blob  = new Blob([arrayBuffer], { type: selectedFile.type });
-    const newId = await db.wardrobeItems.add({
-      imageBlob: blob, imageHash: hash,
-      category: meta.category,
-      colors: [], styles: [], occasions: [],
-      geminiTags: null, status: 'untagged', dateAdded: new Date(),
-    });
-    setPreview(null);
-    setSelectedFile(null);
-    setUploading(false);
+  function handleFile(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    handleFiles(files);
     fileRef.current.value = '';
-    loadItems();
-    tagItem(newId).then(() => loadItems());
   }
 
   async function handleDelete(id) {
@@ -106,35 +102,28 @@ export default function WardrobePage() {
 
       {/* Upload */}
       <div className="bg-neutral-900 rounded-xl p-6 mb-8">
-        <p className="text-sm text-neutral-400 mb-4">Add item</p>
-        <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+        <p className="text-sm text-neutral-400 mb-3">Add items</p>
+        <div className="flex gap-3 mb-4 items-center">
+          <select
+            value={meta.category}
+            onChange={e => setMeta({ ...meta, category: e.target.value })}
+            className="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white"
+          >
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <span className="text-xs text-neutral-600">applied to all uploads in this batch</span>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleFile} className="hidden" />
         <div
           onClick={() => fileRef.current.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); handleFiles(Array.from(e.dataTransfer.files)); }}
           className="border-2 border-dashed border-neutral-700 rounded-lg p-8
-                     text-center cursor-pointer hover:border-neutral-500 transition-colors"
+                    text-center cursor-pointer hover:border-neutral-500 transition-colors"
         >
-          {preview
-            ? <img src={preview} className="max-h-48 mx-auto rounded" alt="preview" />
-            : <p className="text-neutral-500">Click to upload a photo</p>
-          }
+          <p className="text-neutral-400 text-sm">Click or drag & drop photos here</p>
+          <p className="text-neutral-600 text-xs mt-1">Multiple files supported — each is tagged automatically</p>
         </div>
-        {preview && (
-          <div className="flex gap-3 mt-4 items-center">
-            <select
-              value={meta.category}
-              onChange={e => setMeta({ ...meta, category: e.target.value })}
-              className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white"
-            >
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <button
-              onClick={handleSave}
-              className="bg-white text-black px-4 py-2 rounded-lg text-sm font-medium"
-            >
-              {uploading ? 'Saving...' : 'Save to wardrobe'}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Grid */}

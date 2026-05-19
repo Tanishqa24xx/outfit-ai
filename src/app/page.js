@@ -1,5 +1,3 @@
-// outfit-ai\src\app\page.js
-
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '@/lib/db';
@@ -48,6 +46,9 @@ export default function RecommendPage() {
     setOutfits([]);
 
     try {
+      const inspoRaw  = await db.inspoPhotos.where('status').equals('done').toArray();
+      const inspoData = inspoRaw.map(p => p.tags).filter(Boolean);
+
       const wardrobeData = wardrobe
         .filter(i => i.status === 'tagged')
         .map(({ id, category, colors, styles, occasions, geminiTags }) => ({
@@ -57,7 +58,7 @@ export default function RecommendPage() {
       const res  = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wardrobe: wardrobeData, occasion, weather, style, extraNotes }),
+        body: JSON.stringify({ wardrobe: wardrobeData, occasion, weather, style, extraNotes, inspoContext: inspoData }),
       });
       const data = await res.json();
 

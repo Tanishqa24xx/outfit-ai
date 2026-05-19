@@ -77,6 +77,8 @@ function validateLayering(itemIds, allItems) {
   return true;
 }
 
+const toArrLocal = v => Array.isArray(v) ? v : (v ? [v] : []);
+
 function filterByOccasion(items, occasion) {
   const isStrict     = STRICT_FORMAL.includes(occasion);
   const isSemi       = SEMI_FORMAL.includes(occasion);
@@ -85,7 +87,6 @@ function filterByOccasion(items, occasion) {
 
   return items.filter(item => {
     const d = (item.geminiTags?.description || item.description || '').toLowerCase();
-    const f = (item.geminiTags?.fit || item.fit || '').toLowerCase();
 
     // Yoga/leggings banned everywhere except athleisure
     if (!isAthleisure && ALWAYS_BANNED_NON_ATHLEISURE.some(k => d.includes(k))) return false;
@@ -105,7 +106,7 @@ function filterByOccasion(items, occasion) {
 
 export async function POST(request) {
   try {
-    const { wardrobe: raw, occasion, weather, style, extraNotes } = await request.json();
+    const { wardrobe: raw, occasion, weather, style, extraNotes, inspoContext } = await request.json();
 
     // Normalise fit/fabricType — DB may store string (old) or array (new)
     const toArr = v => Array.isArray(v) ? v : (v ? [v] : []);
@@ -182,6 +183,12 @@ PHYSICAL LAYERING — NON-NEGOTIABLE:
 - Never dress + top or dress + bottom
 - When in doubt: 2-piece outfit beats forced layering
 
+${inspoContext && inspoContext.length > 0 ? `
+STYLE INSPO — outfits the user has saved and loves. Use these to inform silhouette, color, and mood choices:
+${inspoContext.map((p,i) => `Inspo ${i+1}: ${p.outfitDescription} | Silhouette: ${p.silhouette} | Elements: ${(p.keyElements||[]).join(', ')} | Mood: ${(p.moodWords||[]).join(', ')}`).join('\n')}
+
+Apply these learnings — if user consistently saves monochrome outfits, bias towards monochrome. If they save wide-leg silhouettes, prioritise those.
+` : ''}
 WARDROBE — use ONLY these exact IDs, do not invent:
 ${wardrobeList}
 

@@ -1,5 +1,4 @@
-// outfit-ai\src\app\layout.js
-
+// src/app/layout.js
 import { Geist } from 'next/font/google';
 import './globals.css';
 import Nav from '@/components/Nav';
@@ -16,7 +15,8 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={`${geist.className} bg-neutral-950 text-white min-h-screen`}>
         <Nav />
-        <main className="max-w-5xl mx-auto px-4 py-8">
+        {/* pb-20 on mobile so content clears the bottom tab bar */}
+        <main className="max-w-3xl mx-auto px-4 py-6 pb-24 md:pb-8">
           {children}
         </main>
       </body>
